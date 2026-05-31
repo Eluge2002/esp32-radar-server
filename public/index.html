@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8" />
+  <title>ESP32 Ultrasonic Radar</title>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1 {
+      margin-top: 25px;
+      color: #58a6ff;
+    }
+
+    .container {
+      margin-top: 20px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 20px;
+      padding: 25px;
+      box-shadow: 0 0 30px rgba(88, 166, 255, 0.15);
+    }
+
+    canvas {
+      background: radial-gradient(circle at center, #0d1117, #010409);
+      border-radius: 16px;
+      border: 1px solid #30363d;
+    }
+
+    .info {
+      margin-top: 20px;
+      font-size: 20px;
+      display: flex;
+      justify-content: space-between;
+      gap: 40px;
+    }
+
+    .value {
+      color: #3fb950;
+      font-weight: bold;
+    }
+
+    .status {
+      margin-top: 15px;
+      color: #8b949e;
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .danger {
+      color: #f85149;
+    }
+
+    .ok {
+      color: #3fb950;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>ESP32 Ultrasonic Radar</h1>
+
+  <div class="container">
+    <canvas id="radar" width="700" height="400"></canvas>
+
+    <div class="info">
+      <div>Distanță: <span class="value" id="distance">0</span> cm</div>
+      <div>Stare: <span class="value" id="objectStatus">Aștept date</span></div>
+    </div>
+
+    <div class="status" id="connectionStatus">
+      Conectare la server...
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("radar");
+    const ctx = canvas.getContext("2d");
+
+    const distanceText = document.getElementById("distance");
+    const objectStatus = document.getElementById("objectStatus");
+    const connectionStatus = document.getElementById("connectionStatus");
+
+    let currentDistance = 0;
+    let sweepAngle = 0;
+    let direction = 1;
+
+    function drawRadar() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height - 30;
+      const maxRadius = 330;
+
+      ctx.strokeStyle = "#238636";
+      ctx.lineWidth = 1;
+
+      for (let r = 80; r <= maxRadius; r += 80) {
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, r, Math.PI, 2 * Math.PI);
+        ctx.stroke();
+      }
+
+      for (let angle = 0; angle <= 180; angle += 30) {
+        const rad = (180 - angle) * Math.PI / 180;
+        const x = centerX + maxRadius * Math.cos(rad);
+        const y = centerY - maxRadius * Math.sin(rad);
+
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+
+        ctx.fillStyle = "#8b949e";
+        ctx.font = "14px Arial";
+        ctx.fillText(`${angle}°`, x - 12, y + 15);
+      }
+
+      const sweepRad = (180 - sweepAngle) * Math.PI / 180;
+      const sweepX = centerX + maxRadius * Math.cos(sweepRad);
+      const sweepY = centerY - maxRadius * Math.sin(sweepRad);
+
+      ctx.strokeStyle = "#58a6ff";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(centerX, centerY);
+      ctx.lineTo(sweepX, sweepY);
+      ctx.stroke();
+
+      if (currentDistance > 0 && currentDistance <= 100) {
+        const objectRadius = (currentDistance / 100) * maxRadius;
+        const objectX = centerX + objectRadius * Math.cos(sweepRad);
+        const objectY = centerY - objectRadius * Math.sin(sweepRad);
+
+        ctx.fillStyle = "#f85149";
+        ctx.beginPath();
+        ctx.arc(objectX, objectY, 8, 0, 2 * Math.PI);
+        ctx.fill();
+
+        ctx.font = "15px Arial";
+        ctx.fillText(`${currentDistance.toFixed(1)} cm`, objectX + 10, objectY - 10);
+      }
+
+      ctx.fillStyle = "#e6edf3";
+      ctx.font = "14px Arial";
+      ctx.fillText("0 cm", centerX + 10, centerY - 5);
+      ctx.fillText("100 cm", centerX + maxRadius - 55, centerY - 5);
+    }
+
+    function animateSweep() {
+      sweepAngle += direction * 2;
+
+      if (sweepAngle >= 180) {
+        sweepAngle = 180;
+        direction = -1;
+      }
+
+      if (sweepAngle <= 0) {
+        sweepAngle = 0;
+        direction = 1;
+      }
+
+      drawRadar();
+      requestAnimationFrame(animateSweep);
+    }
+
+    function connectWebSocket() {
+      const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+      const socket = new WebSocket(`${protocol}://${window.location.host}`);
+
+      socket.onopen = () => {
+        connectionStatus.textContent = "Conectat la server";
+        connectionStatus.className = "status ok";
+      };
+
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        currentDistance = data.distance;
+        distanceText.textContent = currentDistance.toFixed(1);
+
+        if (currentDistance > 0 && currentDistance <= 30) {
+          objectStatus.textContent = "Obstacol aproape";
+          objectStatus.className = "value danger";
+        } else if (currentDistance > 30 && currentDistance <= 100) {
+          objectStatus.textContent = "Obstacol detectat";
+          objectStatus.className = "value ok";
+        } else {
+          objectStatus.textContent = "Liber";
+          objectStatus.className = "value";
+        }
+      };
+
+      socket.onclose = () => {
+        connectionStatus.textContent = "Conexiune pierdută. Reîncerc...";
+        connectionStatus.className = "status danger";
+
+        setTimeout(connectWebSocket, 2000);
+      };
+    }
+
+    connectWebSocket();
+    animateSweep();
+  </script>
+</body>
+</html>
