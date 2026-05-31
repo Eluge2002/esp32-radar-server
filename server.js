@@ -30,11 +30,14 @@ function broadcast(data) {
 }
 
 app.post("/api/radar", (req, res) => {
-  const { distance } = req.body;
+  console.log("Body primit:", req.body);
 
-  if (typeof distance !== "number") {
+  const distance = Number(req.body.distance);
+
+  if (Number.isNaN(distance)) {
     return res.status(400).json({
-      error: "Distance must be a number"
+      error: "Distance must be a valid number",
+      received: req.body
     });
   }
 
