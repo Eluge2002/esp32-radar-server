@@ -14,6 +14,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.text({ type: "*/*" }));
 app.use(express.static(path.join(__dirname, "public")));
+
 let latestData = {
   distance: 0,
   timestamp: Date.now()
@@ -29,29 +30,13 @@ function broadcast(data) {
   });
 }
 
-app.post("/api/radar", (req, res) => {
-  console.log("Body primit:", req.body);
-
-  let distance;
-
-  if (typeof req.body === "object") {
-    distance = Number(req.body.distance);
-  } else if (typeof req.body === "string") {
-    try {
-      const parsed = JSON.parse(req.body);
-      distance = Number(parsed.distance);
-    } catch (err) {
-      const match = req.body.match(/[\d.]+/);
-      distance = match ? Number(match[0]) : NaN;
-    }
-  }
+function handleRadarData(distanceRaw, res) {
+  const distance = Number(distanceRaw);
 
   if (Number.isNaN(distance)) {
-    console.log("Body invalid:", req.body);
-
     return res.status(400).json({
       error: "Distance must be a valid number",
-      received: req.body
+      received: distanceRaw
     });
   }
 
@@ -68,6 +53,30 @@ app.post("/api/radar", (req, res) => {
     status: "ok",
     data: latestData
   });
+}
+
+app.post("/api/radar", (req, res) => {
+  console.log("POST body:", req.body);
+
+  let distanceRaw;
+
+  if (typeof req.body === "object") {
+    distanceRaw = req.body.distance;
+  } else if (typeof req.body === "string") {
+    try {
+      const parsed = JSON.parse(req.body);
+      distanceRaw = parsed.distance;
+    } catch (error) {
+      distanceRaw = req.body;
+    }
+  }
+
+  handleRadarData(distanceRaw, res);
+});
+
+app.get("/api/radar", (req, res) => {
+  console.log("GET query:", req.query);
+  handleRadarData(req.query.distance, res);
 });
 
 app.get("/api/latest", (req, res) => {
